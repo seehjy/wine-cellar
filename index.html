@@ -1244,6 +1244,8 @@ ul, ol {
     <div id="page-profile" class="page"></div>
     <div id="page-wine" class="page"></div>
     <div id="page-tasting" class="page"></div>
+  <div id="page-tasting-list" class="page"></div>
+  <div id="page-tasting-new" class="page"></div>
     <div id="page-share" class="page"></div>
   </main>
   <nav id="tab-bar">
@@ -1287,6 +1289,52 @@ var WineDB = {
       'w006': { id:'w006', name:'孔子联名·小酒', brand:'\u820d\u5f97', vintage:2024, region:'四川·遂宁', type:'白酒', aroma:'浓香型', price:89, rating:4.0, status:'finished', purchaseDate:'2024-04-05', createdAt:now-86400000*70, updatedAt:now-86400000*50, notes:'已品鉴' }
     };
     localStorage.setItem(this._key, JSON.stringify(demos));
+  },
+
+  // === Tasting Notes Methods ===
+  _tastingKey: 'wine_cellar_tasting_notes',
+  getAllTastingNotes: function() {
+    try { return JSON.parse(localStorage.getItem(this._tastingKey)) || []; }
+    catch(e) { return []; }
+  },
+  getTastingNotesByWine: function(wineId) {
+    return this.getAllTastingNotes().filter(function(n) { return n.wineId === wineId; });
+  },
+  getTastingNote: function(id) {
+    return this.getAllTastingNotes().find(function(n) { return n.id === id; }) || null;
+  },
+  saveTastingNote: function(note) {
+    var notes = this.getAllTastingNotes();
+    if (!note.id) note.id = 'tn_' + Date.now();
+    note.updatedAt = Date.now();
+    if (!note.createdAt) note.createdAt = Date.now();
+    var idx = notes.findIndex(function(n) { return n.id === note.id; });
+    if (idx >= 0) notes[idx] = note;
+    else notes.push(note);
+    localStorage.setItem(this._tastingKey, JSON.stringify(notes));
+    return note;
+  },
+  deleteTastingNote: function(id) {
+    var notes = this.getAllTastingNotes().filter(function(n) { return n.id !== id; });
+    localStorage.setItem(this._tastingKey, JSON.stringify(notes));
+  },
+  _seedTastingNotes: function() {
+    if (this.getAllTastingNotes().length > 0) return;
+    var notes = [
+      {
+        id: 'tn001', wineId: 'w001', date: '2025-03-20',
+        ratings: { color: 8, aroma: 9, taste: 8, finish: 7, overall: 8 },
+        descriptions: { color: '清澈透亮，微黄', aroma: '窖香浓郁，陈香突出', taste: '绵甜醇厚，入口柔和', finish: '回味悠长，余香绕梁', overall: '经典浓香，性价比极高' },
+        pairing: '红烧肉、酱鸭', createdAt: Date.now()-86400000*10, updatedAt: Date.now()-86400000*10
+      },
+      {
+        id: 'tn002', wineId: 'w005', date: '2025-04-15',
+        ratings: { color: 9, aroma: 9, taste: 9, finish: 9, overall: 9 },
+        descriptions: { color: '微黄透明，挂杯明显', aroma: '酱香突出，幽雅细腻', taste: '醇厚丰满，酱香显著', finish: '空杯留香持久', overall: '国酒之尊，无可挑剔' },
+        pairing: '清蒸鱼、白切鸡', createdAt: Date.now()-86400000*5, updatedAt: Date.now()-86400000*5
+      }
+    ];
+    localStorage.setItem(this._tastingKey, JSON.stringify(notes));
   }
 };
 </script>
@@ -3391,6 +3439,7 @@ window.SearchPage = (function() {
 (function() {
   'use strict';
   WineDB.init();
+  WineDB._seedTastingNotes();
   window.showToast = function(msg, duration) {
     duration = duration || 2000;
     var el = document.getElementById('toast');
@@ -3415,6 +3464,9 @@ window.SearchPage = (function() {
       case 'search': if (window.SearchPage) SearchPage.render(container); break;
       case 'stats': if (window.StatsPage) StatsPage.render(container); break;
       case 'profile': if (window.ProfilePage) ProfilePage.render(container); break;
+      case 'tasting': if (window.TastingForm) { var tc = document.getElementById('page-tasting'); new TastingForm(tc, param, function(data) { WineDB.saveTastingNote(data); location.hash = '#/'; }, function() { history.back(); }); } break;
+      case 'tasting-list': if (window.TastingList) { var tlc = document.getElementById('page-tasting-list'); var tl = new TastingList(tlc, WineDB); tl.onItemClick = function(note, wine) { location.hash = '#/tasting-detail/' + note.id; }; tl.render(); } break;
+      case 'tasting-detail': if (window.TastingDetail) { var tdc = document.getElementById('page-tasting'); var noteData = WineDB.getTastingNote(param); var wineData = noteData ? WineDB.get(noteData.wineId) : null; var td = new TastingDetail(tdc, noteData, wineData, { onEdit: function(n) { location.hash = '#/tasting/' + n.wineId; }, onDelete: function(n) { if(confirm('确认删除这条品鉴记录？')) { WineDB.deleteTastingNote(n.id); location.hash = '#/'; } }, onShare: function(n) { if(navigator.share) { navigator.share({ title: (wineData ? wineData.name : '') + ' 品鉴记录', text: '总分' + Object.values(n.ratings).reduce(function(a,b){return a+b;},0)*2 + '/100' }); } } }); td.render(); } break;
     }
   }
   function handleRoute() {
@@ -3424,8 +3476,10 @@ window.SearchPage = (function() {
     var pageName, tabName, param;
     if (hash.indexOf('#/wine/') === 0) { pageName = 'wine'; param = hash.replace('#/wine/', ''); }
     else if (hash.indexOf('#/edit/') === 0) { pageName = 'edit'; param = hash.replace('#/edit/', ''); }
+    else if (hash.indexOf('#/tasting/') === 0) { pageName = 'tasting'; param = hash.replace('#/tasting/', ''); }
+    else if (hash.indexOf('#/tasting-detail/') === 0) { pageName = 'tasting-detail'; param = hash.replace('#/tasting-detail/', ''); }
     else {
-      var map = { '#/': 'cellar', '#/add': 'add', '#/search': 'search', '#/stats': 'stats', '#/profile': 'profile' };
+      var map = { '#/': 'cellar', '#/add': 'add', '#/search': 'search', '#/stats': 'stats', '#/profile': 'profile', '#/tasting': 'tasting', '#/tasting-list': 'tasting-list' };
       pageName = map[hash] || 'cellar';
       tabName = pageName;
     }
@@ -3442,5 +3496,496 @@ window.SearchPage = (function() {
 })();
 </script>
 
+
+<script>
+// === Tasting Form Module ===
+class TastingForm {
+  constructor(container, wineId, onSave, onCancel) {
+    this.container = container;
+    this.wineId = wineId;
+    this.onSave = onSave;
+    this.onCancel = onCancel;
+    this.sliders = {};
+    this.descs = {};
+    this.render();
+  }
+
+  render() {
+    this.container.innerHTML = '';
+    const form = document.createElement('div');
+    form.style.cssText = 'background:#1a1a2e;color:#e0e0e0;border-radius:16px;padding:28px 32px;max-width:520px;margin:20px auto;font-family:"Segoe UI",sans-serif;box-shadow:0 8px 32px rgba(0,0,0,0.4)';
+
+    const title = document.createElement('h2');
+    title.textContent = '🍷 品鉴记录';
+    title.style.cssText = 'text-align:center;color:#ffd700;margin:0 0 24px;font-size:1.6em;letter-spacing:2px;text-shadow:0 0 10px rgba(255,215,0,0.3)';
+    form.appendChild(title);
+
+    const dimensions = ['色泽', '香气', '口感', '尾韵', '综合'];
+    dimensions.forEach(dim => {
+      const group = document.createElement('div');
+      group.style.cssText = 'margin-bottom:20px';
+
+      const labelRow = document.createElement('div');
+      labelRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:6px';
+      const label = document.createElement('span');
+      label.textContent = dim;
+      label.style.cssText = 'color:#ffd700;font-weight:600;font-size:0.95em';
+      const score = document.createElement('span');
+      score.textContent = '5';
+      score.style.cssText = 'background:#ffd700;color:#1a1a2e;font-weight:bold;font-size:0.85em;padding:2px 10px;border-radius:12px;min-width:28px;text-align:center';
+      labelRow.append(label, score);
+      group.appendChild(labelRow);
+
+      const slider = document.createElement('input');
+      slider.type = 'range';
+      slider.min = 1;
+      slider.max = 10;
+      slider.value = 5;
+      slider.style.cssText = 'width:100%;height:6px;border-radius:3px;outline:none;-webkit-appearance:none;appearance:none;background:linear-gradient(90deg,#e74c3c,#f39c12,#ffd700,#2ecc71);cursor:pointer;margin:4px 0 8px';
+      const sliderStyle = document.createElement('style');
+      sliderStyle.textContent = `
+        .slider-${dim}::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:#ffd700;cursor:pointer;box-shadow:0 0 6px rgba(255,215,0,0.5)}
+        .slider-${dim}::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:#ffd700;cursor:pointer;border:none}
+      `;
+      document.head.appendChild(sliderStyle);
+      slider.className = `slider-${dim}`;
+      slider.addEventListener('input', () => score.textContent = slider.value);
+      group.appendChild(slider);
+      this.sliders[dim] = slider;
+
+      const desc = document.createElement('textarea');
+      desc.placeholder = `${dim}描述...`;
+      desc.rows = 2;
+      desc.style.cssText = 'width:100%;padding:8px 12px;border:1px solid #333;border-radius:8px;background:#16213e;color:#e0e0e0;resize:vertical;font-size:0.9em;box-sizing:border-box;outline:none;transition:border-color 0.3s';
+      desc.addEventListener('focus', () => desc.style.borderColor = '#ffd700');
+      desc.addEventListener('blur', () => desc.style.borderColor = '#333');
+      group.appendChild(desc);
+      this.descs[dim] = desc;
+
+      form.appendChild(group);
+    });
+
+    const dateRow = document.createElement('div');
+    dateRow.style.cssText = 'margin-bottom:16px';
+    const dateLabel = document.createElement('label');
+    dateLabel.textContent = '📅 品鉴日期';
+    dateLabel.style.cssText = 'color:#ffd700;font-weight:600;display:block;margin-bottom:6px;font-size:0.95em';
+    this.dateInput = document.createElement('input');
+    this.dateInput.type = 'date';
+    this.dateInput.value = new Date().toISOString().split('T')[0];
+    this.dateInput.style.cssText = 'width:100%;padding:8px 12px;border:1px solid #333;border-radius:8px;background:#16213e;color:#e0e0e0;font-size:0.9em;outline:none;box-sizing:border-box;cursor:pointer';
+    dateRow.append(dateLabel, this.dateInput);
+    form.appendChild(dateRow);
+
+    const pairRow = document.createElement('div');
+    pairRow.style.cssText = 'margin-bottom:24px';
+    const pairLabel = document.createElement('label');
+    pairLabel.textContent = '🍽️ 配餐建议';
+    pairLabel.style.cssText = 'color:#ffd700;font-weight:600;display:block;margin-bottom:6px;font-size:0.95em';
+    this.pairInput = document.createElement('input');
+    this.pairInput.type = 'text';
+    this.pairInput.placeholder = '例如：牛排、奶酪、巧克力...';
+    this.pairInput.style.cssText = 'width:100%;padding:8px 12px;border:1px solid #333;border-radius:8px;background:#16213e;color:#e0e0e0;font-size:0.9em;outline:none;box-sizing:border-box;transition:border-color 0.3s';
+    this.pairInput.addEventListener('focus', () => this.pairInput.style.borderColor = '#ffd700');
+    this.pairInput.addEventListener('blur', () => this.pairInput.style.borderColor = '#333');
+    pairRow.append(pairLabel, this.pairInput);
+    form.appendChild(pairRow);
+
+    const btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;gap:12px;justify-content:flex-end';
+
+    const saveBtn = document.createElement('button');
+    saveBtn.textContent = '💾 保存';
+    saveBtn.style.cssText = 'padding:10px 28px;border:none;border-radius:24px;background:linear-gradient(135deg,#ffd700,#e6ac00);color:#1a1a2e;font-weight:bold;font-size:0.95em;cursor:pointer;transition:transform 0.2s,box-shadow 0.2s;box-shadow:0 4px 12px rgba(255,215,0,0.3)';
+    saveBtn.addEventListener('mouseenter', () => { saveBtn.style.transform = 'translateY(-2px)'; saveBtn.style.boxShadow = '0 6px 16px rgba(255,215,0,0.4)'; });
+    saveBtn.addEventListener('mouseleave', () => { saveBtn.style.transform = 'translateY(0)'; saveBtn.style.boxShadow = '0 4px 12px rgba(255,215,0,0.3)'; });
+    saveBtn.addEventListener('click', () => this.onSave && this.onSave(this.collectData()));
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = '✕ 取消';
+    cancelBtn.style.cssText = 'padding:10px 28px;border:1px solid #555;border-radius:24px;background:transparent;color:#ccc;font-weight:bold;font-size:0.95em;cursor:pointer;transition:border-color 0.3s';
+    cancelBtn.addEventListener('mouseenter', () => cancelBtn.style.borderColor = '#e74c3c');
+    cancelBtn.addEventListener('mouseleave', () => cancelBtn.style.borderColor = '#555');
+    cancelBtn.addEventListener('click', () => this.onCancel && this.onCancel());
+
+    btnRow.append(saveBtn, cancelBtn);
+    form.appendChild(btnRow);
+
+    this.container.appendChild(form);
+  }
+
+  collectData() {
+    const ratings = {};
+    for (const dim of Object.keys(this.sliders)) {
+      ratings[dim] = {
+        score: Number(this.sliders[dim].value),
+        description: this.descs[dim].value.trim()
+      };
+    }
+    return {
+      wineId: this.wineId,
+      date: this.dateInput.value,
+      ratings,
+      pairing: this.pairInput.value.trim()
+    };
+  }
+}
+
+</script>
+
+<script>
+// === Tasting Detail Module ===
+class TastingDetail {
+  constructor(container, note, wine, callbacks = {}) {
+    this.container = container;
+    this.note = note || {};
+    this.wine = wine || {};
+    this.onEdit = callbacks.onEdit || (() => {});
+    this.onDelete = callbacks.onDelete || (() => {});
+    this.onShare = callbacks.onShare || (() => {});
+  }
+
+  render() {
+    this.container.innerHTML = '';
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = 'padding:20px;max-width:600px;margin:0 auto;';
+
+    // 酒名头部
+    const header = document.createElement('div');
+    header.style.cssText = 'text-align:center;margin-bottom:24px;';
+    const name = document.createElement('h2');
+    name.textContent = this.wine.name || '未知酒款';
+    name.style.cssText = 'color:#ffd700;font-size:22px;margin:0 0 4px;';
+    const brand = document.createElement('p');
+    brand.textContent = (this.wine.brand || '') + ' · ' + (this.wine.type || '');
+    brand.style.cssText = 'color:#888;font-size:14px;margin:0;';
+    header.append(name, brand);
+    wrapper.appendChild(header);
+
+    // 雷达图
+    const canvasBox = document.createElement('div');
+    canvasBox.style.cssText = 'display:flex;justify-content:center;margin:20px 0;';
+    const canvas = document.createElement('canvas');
+    canvas.width = 260;
+    canvas.height = 260;
+    canvasBox.appendChild(canvas);
+    wrapper.appendChild(canvasBox);
+    this.drawRadar(canvas, this.note.ratings || {});
+
+    // 评分详情
+    const dims = [
+      { key: 'color', label: '色泽' },
+      { key: 'aroma', label: '香气' },
+      { key: 'taste', label: '口感' },
+      { key: 'finish', label: '尾韵' },
+      { key: 'overall', label: '综合' }
+    ];
+    const ratings = this.note.ratings || {};
+    const totalScore = dims.reduce((s, d) => s + (ratings[d.key] || 0), 0) * 2;
+
+    const scoreCard = document.createElement('div');
+    scoreCard.style.cssText = 'background:#16213e;border-radius:12px;padding:16px;margin:16px 0;';
+    const totalLine = document.createElement('div');
+    totalLine.style.cssText = 'text-align:center;margin-bottom:12px;';
+    const totalNum = document.createElement('span');
+    totalNum.textContent = totalScore;
+    totalNum.style.cssText = 'color:#ffd700;font-size:36px;font-weight:bold;';
+    const totalLabel = document.createElement('span');
+    totalLabel.textContent = ' / 100';
+    totalLabel.style.cssText = 'color:#888;font-size:14px;';
+    totalLine.append(totalNum, totalLabel);
+    scoreCard.appendChild(totalLine);
+
+    dims.forEach(d => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,215,0,0.1);';
+      const lbl = document.createElement('span');
+      lbl.textContent = d.label;
+      lbl.style.cssText = 'color:#ccc;font-size:14px;';
+      const val = document.createElement('span');
+      val.textContent = (ratings[d.key] || 0) + ' / 10';
+      val.style.cssText = 'color:#ffd700;font-size:14px;';
+      row.append(lbl, val);
+      scoreCard.appendChild(row);
+    });
+    wrapper.appendChild(scoreCard);
+
+    // 描述
+    const descs = this.note.descriptions || {};
+    dims.forEach(d => {
+      if (descs[d.key]) {
+        const block = document.createElement('div');
+        block.style.cssText = 'margin:12px 0;';
+        const dt = document.createElement('h4');
+        dt.textContent = d.label + '评价';
+        dt.style.cssText = 'color:#ffd700;font-size:14px;margin:0 0 4px;';
+        const dd = document.createElement('p');
+        dd.textContent = descs[d.key];
+        dd.style.cssText = 'color:#ccc;font-size:13px;margin:0;line-height:1.6;background:#16213e;padding:10px;border-radius:8px;';
+        block.append(dt, dd);
+        wrapper.appendChild(block);
+      }
+    });
+
+    // 配餐
+    if (this.note.pairing) {
+      const pair = document.createElement('div');
+      pair.style.cssText = 'margin:12px 0;background:#16213e;padding:12px;border-radius:8px;';
+      const pt = document.createElement('h4');
+      pt.textContent = '配餐建议';
+      pt.style.cssText = 'color:#ffd700;font-size:14px;margin:0 0 4px;';
+      const pp = document.createElement('p');
+      pp.textContent = this.note.pairing;
+      pp.style.cssText = 'color:#ccc;font-size:13px;margin:0;';
+      pair.append(pt, pp);
+      wrapper.appendChild(pair);
+    }
+
+    // 日期
+    if (this.note.date) {
+      const dateEl = document.createElement('p');
+      dateEl.textContent = '品鉴日期: ' + this.note.date;
+      dateEl.style.cssText = 'color:#888;font-size:12px;text-align:center;margin:16px 0;';
+      wrapper.appendChild(dateEl);
+    }
+
+    // 按钮栏
+    const btns = document.createElement('div');
+    btns.style.cssText = 'display:flex;gap:12px;margin-top:20px;';
+    const btnStyle = 'flex:1;padding:12px;border:none;border-radius:8px;font-size:14px;cursor:pointer;font-weight:bold;';
+    const editBtn = document.createElement('button');
+    editBtn.textContent = '编辑';
+    editBtn.style.cssText = btnStyle + 'background:#16213e;color:#ffd700;border:1px solid #ffd700;';
+    editBtn.onclick = () => this.onEdit(this.note);
+    const delBtn = document.createElement('button');
+    delBtn.textContent = '删除';
+    delBtn.style.cssText = btnStyle + 'background:#3d1a1a;color:#ff6b6b;border:1px solid #ff6b6b;';
+    delBtn.onclick = () => this.onDelete(this.note);
+    const shareBtn = document.createElement('button');
+    shareBtn.textContent = '分享';
+    shareBtn.style.cssText = btnStyle + 'background:linear-gradient(135deg,#ffd700,#e6c200);color:#1a1a2e;';
+    shareBtn.onclick = () => this.onShare(this.note);
+    btns.append(editBtn, delBtn, shareBtn);
+    wrapper.appendChild(btns);
+
+    this.container.appendChild(wrapper);
+  }
+
+  drawRadar(canvas, ratings) {
+    const ctx = canvas.getContext('2d');
+    const cx = 130, cy = 130, maxR = 100;
+    const dims = ['color', 'aroma', 'taste', 'finish', 'overall'];
+    const labels = ['色泽', '香气', '口感', '尾韵', '综合'];
+    const n = dims.length;
+    const angleStep = (Math.PI * 2) / n;
+    const startAngle = -Math.PI / 2;
+
+    ctx.clearRect(0, 0, 260, 260);
+
+    // 画网格
+    for (let level = 2; level <= 10; level += 2) {
+      ctx.beginPath();
+      const r = (level / 10) * maxR;
+      for (let i = 0; i <= n; i++) {
+        const angle = startAngle + i * angleStep;
+        const x = cx + r * Math.cos(angle);
+        const y = cy + r * Math.sin(angle);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.strokeStyle = 'rgba(255,215,0,0.15)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    // 画轴线
+    for (let i = 0; i < n; i++) {
+      const angle = startAngle + i * angleStep;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + maxR * Math.cos(angle), cy + maxR * Math.sin(angle));
+      ctx.strokeStyle = 'rgba(255,215,0,0.2)';
+      ctx.stroke();
+    }
+
+    // 画数据区域
+    ctx.beginPath();
+    for (let i = 0; i <= n; i++) {
+      const idx = i % n;
+      const val = ratings[dims[idx]] || 0;
+      const r = (val / 10) * maxR;
+      const angle = startAngle + idx * angleStep;
+      const x = cx + r * Math.cos(angle);
+      const y = cy + r * Math.sin(angle);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(255,215,0,0.25)';
+    ctx.fill();
+    ctx.strokeStyle = '#ffd700';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // 画数据点
+    for (let i = 0; i < n; i++) {
+      const val = ratings[dims[i]] || 0;
+      const r = (val / 10) * maxR;
+      const angle = startAngle + i * angleStep;
+      const x = cx + r * Math.cos(angle);
+      const y = cy + r * Math.sin(angle);
+      ctx.beginPath();
+      ctx.arc(x, y, 4, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffd700';
+      ctx.fill();
+    }
+
+    // 画标签
+    ctx.font = '12px sans-serif';
+    ctx.fillStyle = '#ccc';
+    ctx.textAlign = 'center';
+    for (let i = 0; i < n; i++) {
+      const angle = startAngle + i * angleStep;
+      const lx = cx + (maxR + 18) * Math.cos(angle);
+      const ly = cy + (maxR + 18) * Math.sin(angle);
+      ctx.fillText(labels[i] + ' ' + (ratings[dims[i]] || 0), lx, ly + 4);
+    }
+  }
+}
+
+</script>
+
+<script>
+// === Tasting List Module ===
+class TastingList {
+  constructor(container, db) {
+    this.container = container;
+    this.db = db;
+    this.notes = [];
+    this.wines = [];
+    this.onItemClick = null;
+  }
+
+  async render() {
+    this.container.innerHTML = '';
+    try {
+      this.wines = await this.db.getAll() || [];
+      this.notes = await this.db.getAllTastingNotes() || [];
+    } catch (e) {
+      this.notes = [];
+      this.wines = [];
+    }
+
+    if (this.notes.length === 0) {
+      const empty = document.createElement('div');
+      empty.style.cssText = 'text-align:center;padding:60px 20px;';
+      const icon = document.createElement('div');
+      icon.textContent = '🍷';
+      icon.style.cssText = 'font-size:48px;margin-bottom:12px;';
+      const msg = document.createElement('p');
+      msg.textContent = '还没有品鉴记录';
+      msg.style.cssText = 'color:#888;font-size:16px;margin:0 0 8px;';
+      const sub = document.createElement('p');
+      sub.textContent = '快去添加你的第一份品鉴笔记吧';
+      sub.style.cssText = 'color:#666;font-size:13px;margin:0;';
+      empty.append(icon, msg, sub);
+      this.container.appendChild(empty);
+      return;
+    }
+
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = 'padding:16px;';
+
+    const title = document.createElement('h2');
+    title.textContent = '品鉴记录';
+    title.style.cssText = 'color:#ffd700;font-size:20px;margin:0 0 16px;';
+    wrapper.appendChild(title);
+
+    const countEl = document.createElement('p');
+    countEl.textContent = '共 ' + this.notes.length + ' 条记录';
+    countEl.style.cssText = 'color:#888;font-size:13px;margin:0 0 16px;';
+    wrapper.appendChild(countEl);
+
+    // 按酒分组
+    const grouped = {};
+    this.notes.forEach(note => {
+      const wid = note.wineId || 'unknown';
+      if (!grouped[wid]) grouped[wid] = [];
+      grouped[wid].push(note);
+    });
+
+    Object.keys(grouped).forEach(wid => {
+      const wine = this.wines.find(w => w.id === wid) || { name: '未知酒款', brand: '' };
+      const groupNotes = grouped[wid].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+      // 酒名分组标题
+      const groupHeader = document.createElement('div');
+      groupHeader.style.cssText = 'display:flex;align-items:center;gap:8px;margin:16px 0 8px;padding-bottom:8px;border-bottom:1px solid rgba(255,215,0,0.2);';
+      const dot = document.createElement('span');
+      dot.style.cssText = 'width:8px;height:8px;border-radius:50%;background:#ffd700;';
+      const gname = document.createElement('span');
+      gname.textContent = wine.name + (wine.brand ? ' · ' + wine.brand : '');
+      gname.style.cssText = 'color:#ffd700;font-size:16px;font-weight:bold;';
+      const gcount = document.createElement('span');
+      gcount.textContent = groupNotes.length + '条';
+      gcount.style.cssText = 'color:#888;font-size:12px;';
+      groupHeader.append(dot, gname, gcount);
+      wrapper.appendChild(groupHeader);
+
+      // 每条品鉴记录
+      groupNotes.forEach(note => {
+        const card = document.createElement('div');
+        card.style.cssText = 'background:#16213e;border-radius:10px;padding:14px;margin:8px 0;cursor:pointer;transition:all 0.2s;';
+        card.onmouseover = () => { card.style.background = '#1a2a4e'; };
+        card.onmouseout = () => { card.style.background = '#16213e'; };
+
+        const topRow = document.createElement('div');
+        topRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;';
+
+        const dateEl = document.createElement('span');
+        dateEl.textContent = note.date || '未记录';
+        dateEl.style.cssText = 'color:#888;font-size:12px;';
+
+        const dims = ['color', 'aroma', 'taste', 'finish', 'overall'];
+        const ratings = note.ratings || {};
+        const total = dims.reduce((s, d) => s + (ratings[d] || 0), 0) * 2;
+
+        const scoreEl = document.createElement('span');
+        scoreEl.textContent = total + '分';
+        scoreEl.style.cssText = 'color:#ffd700;font-size:16px;font-weight:bold;';
+        topRow.append(dateEl, scoreEl);
+        card.appendChild(topRow);
+
+        // 简评
+        const descs = note.descriptions || {};
+        const firstDesc = dims.map(d => descs[d]).filter(Boolean)[0];
+        if (firstDesc) {
+          const brief = document.createElement('p');
+          brief.textContent = firstDesc.length > 40 ? firstDesc.substring(0, 40) + '...' : firstDesc;
+          brief.style.cssText = 'color:#aaa;font-size:12px;margin:8px 0 0;line-height:1.4;';
+          card.appendChild(brief);
+        }
+
+        // 配餐
+        if (note.pairing) {
+          const pairEl = document.createElement('div');
+          pairEl.style.cssText = 'margin-top:6px;font-size:11px;color:#666;';
+          pairEl.textContent = '🍽 ' + note.pairing;
+          card.appendChild(pairEl);
+        }
+
+        card.onclick = () => {
+          if (this.onItemClick) this.onItemClick(note, wine);
+        };
+        wrapper.appendChild(card);
+      });
+    });
+
+    this.container.appendChild(wrapper);
+  }
+}
+
+</script>
 </body>
 </html>
