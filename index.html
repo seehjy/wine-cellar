@@ -1425,7 +1425,8 @@ window.CellarPage = (function() {
     var footer = el('div', 'wine-card-footer');
     if (wine.type) { footer.appendChild(el('span', 'wine-card-type', wine.type)); }
     if (wine.aroma && wine.type === '白酒') { footer.appendChild(el('span', 'wine-card-type', wine.aroma)); }
-    if (wine.price) { footer.appendChild(el('span', 'wine-card-price', '¥' + wine.price)); }
+    if (wine.volume) { footer.appendChild(el('span', 'wine-card-type', wine.volume + 'ml')); }
+      if (wine.price) { footer.appendChild(el('span', 'wine-card-price', '¥' + wine.price)); }
       var tastingBtn = el('span', 'wine-card-tasting', '🍷');
       tastingBtn.style.cssText = 'cursor:pointer;font-size:16px;margin-left:auto;padding:2px 6px;border-radius:4px;';
       tastingBtn.title = '添加品鉴记录';
@@ -1666,9 +1667,7 @@ window.SearchPage = (function() {
     card.appendChild(info);
 
     card.addEventListener('click', function() {
-      if (typeof window.WineDetail !== 'undefined') {
-        window.WineDetail.show(item);
-      }
+      if (item.id) { location.hash = '#/wine/' + item.id; }
     });
 
     return card;
@@ -1877,14 +1876,69 @@ window.SearchPage = (function() {
             
             form.innerHTML = formHTML;
             container.appendChild(form);
+
+            // 动态子分类数据
+            var subCategoryMap = {
+              '白酒': { label: '香型', options: ['酱香型','浓香型','清香型','米香型','凤香型','兼香型','老白干香型','其他'] },
+              '洋酒': { label: '类别', options: ['金酒','伏特加','朗姆酒','龙舌兰','白兰地','力娇酒','其他'] },
+              '红葡萄酒': { label: '品种', options: ['赤霞珠','梅洛','黑皮诺','西拉','品丽珠','马尔贝克','混酿','其他'] },
+              '白葡萄酒': { label: '品种', options: ['霞多丽','长相思','雷司令','琼瑶浆','灰皮诺','赛美蓉','其他'] },
+              '啤酒': { label: '风格', options: ['拉格','艾尔','世涛','IPA','小麦啤','酸啤','其他'] },
+              '威士忌': { label: '产地', options: ['苏格兰单一麦芽','苏格兰调和','爱尔兰','美国波本','日本','加拿大','其他'] },
+              '其他': { label: '细分类别', options: ['清酒','烧酎','黄酒','果酒','梅酒','其他'] }
+            };
+            var regionMap = {
+              '白酒': ['四川·遂宁','四川·宜宾','四川·泸州','贵州·仁怀','贵州·遵义','山西·汾阳','北京','河南','湖北','江苏','安徽','山东','其他'],
+              '洋酒': ['英国','法国','意大利','俄罗斯','墨西哥','加勒比','日本','其他'],
+              '红葡萄酒': ['法国·波尔多','法国·勃艮第','意大利·托斯卡纳','西班牙·里奥哈','智利','澳大利亚','美国·纳帕','中国·宁夏','其他'],
+              '白葡萄酒': ['法国·阿尔萨斯','法国·勃艮第','德国·摩泽尔','新西兰','澳大利亚','智利','中国·宁夏','其他'],
+              '啤酒': ['德国','比利时','捷克','英国','美国','中国','日本','其他'],
+              '威士忌': ['苏格兰·斯佩塞','苏格兰·艾雷岛','苏格兰·高地','爱尔兰','美国·肯塔基','日本·山崎','日本·余市','其他'],
+              '其他': ['日本','韩国','中国','法国','意大利','其他']
+            };
+
+            window._updateSubCategory = function(type) {
+              var subGroup = document.getElementById('subcategory-group');
+              var subLabel = document.getElementById('subcategory-label');
+              var subSelect = document.getElementById('wine-aroma');
+              var regionSelect = document.getElementById('wine-region');
+
+              if (!type || !subCategoryMap[type]) {
+                subGroup.style.display = 'none';
+                regionSelect.innerHTML = '<option value="">请选择产区</option>';
+                return;
+              }
+
+              var subData = subCategoryMap[type];
+              subGroup.style.display = '';
+              subLabel.textContent = subData.label;
+              subSelect.innerHTML = '<option value="">请选择' + subData.label + '</option>';
+              subData.options.forEach(function(opt) {
+                subSelect.innerHTML += '<option value="' + opt + '">' + opt + '</option>';
+              });
+
+              // 更新产区
+              var regions = regionMap[type] || ['其他'];
+              regionSelect.innerHTML = '<option value="">请选择产区</option>';
+              regions.forEach(function(r) {
+                regionSelect.innerHTML += '<option value="' + r + '">' + r + '</option>';
+              });
+            };
             
             if (wineData) {
                 document.getElementById('wine-name').value = wineData.name || '';
                 document.getElementById('wine-brand').value = wineData.brand || '';
                 document.getElementById('wine-year').value = wineData.year || '';
-                document.getElementById('wine-region').value = wineData.region || '';
-                document.getElementById('wine-type').value = wineData.type || '';
+                // 先设类型，触发子分类和产区更新
+                var editType = wineData.type || '';
+                document.getElementById('wine-type').value = editType;
+                if (editType && window._updateSubCategory) {
+                  window._updateSubCategory(editType);
+                }
+                // 然后设子分类和产区
                 document.getElementById('wine-aroma').value = wineData.aroma || '';
+                document.getElementById('wine-region').value = wineData.region || '';
+                document.getElementById('wine-volume').value = wineData.volume || '';
                 document.getElementById('wine-price').value = wineData.price || '';
                 document.getElementById('wine-purchaseDate').value = wineData.purchaseDate || '';
                 document.getElementById('wine-notes').value = wineData.notes || '';
