@@ -2539,41 +2539,25 @@ window.SearchPage = (function() {
         return;
       }
 
-      WineDB.get(wineId).then(function(wine) {
-        if (!wine) {
-          container.innerHTML = '<div class="wine-detail__empty"><div class="wine-detail__empty-icon">🍷</div><p>找不到该酒款</p></div>';
-          return;
-        }
+      var wine = WineDB.get(wineId);
+      if (!wine) {
+        container.innerHTML = '<div class="wine-detail__empty"><div class="wine-detail__empty-icon">🍷</div><p>找不到该酒款</p></div>';
+        return;
+      }
 
-        var tastings = [];
-        if (wine.tastingIds && wine.tastingIds.length > 0) {
-          var promises = wine.tastingIds.map(function(id) {
-            return WineDB.getTasting(id);
-          });
-          return Promise.all(promises).then(function(results) {
-            tastings = results.filter(function(t) { return t != null; });
-            return { wine: wine, tastings: tastings };
-          });
-        }
+      var tastings = [];
+      if (WineDB.getTastingNotesByWine) {
+        tastings = WineDB.getTastingNotesByWine(wineId) || [];
+      }
 
-        if (WineDB.getTastingsByWine) {
-          return WineDB.getTastingsByWine(wineId).then(function(t) {
-            tastings = t || [];
-            return { wine: wine, tastings: tastings };
-          });
-        }
-
-        return { wine: wine, tastings: tastings };
-      }).then(function(data) {
-        if (!data) return;
-
+      var data = { wine: wine, tastings: tastings };
+      try {
         container.innerHTML = buildHTML(data.wine, data.tastings);
-
         bindEvents(container, wineId, data.wine);
-      }).catch(function(err) {
+      } catch(err) {
         console.error('WineDetail: Error loading wine', err);
         container.innerHTML = '<div class="wine-detail__empty"><div class="wine-detail__empty-icon">❌</div><p>加载失败</p></div>';
-      });
+      }
     }
 
     loadWineData();
