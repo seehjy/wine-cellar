@@ -3466,7 +3466,7 @@ window.SearchPage = (function() {
       case 'profile': if (window.ProfilePage) ProfilePage.render(container); break;
       case 'tasting': if (window.TastingForm) { var tc = document.getElementById('page-tasting'); new TastingForm(tc, param, function(data) { WineDB.saveTastingNote(data); location.hash = '#/'; }, function() { history.back(); }); } break;
       case 'tasting-list': if (window.TastingList) { var tlc = document.getElementById('page-tasting-list'); var tl = new TastingList(tlc, WineDB); tl.onItemClick = function(note, wine) { location.hash = '#/tasting-detail/' + note.id; }; tl.render(); } break;
-      case 'tasting-detail': if (window.TastingDetail) { var tdc = document.getElementById('page-tasting'); var noteData = WineDB.getTastingNote(param); var wineData = noteData ? WineDB.get(noteData.wineId) : null; var td = new TastingDetail(tdc, noteData, wineData, { onEdit: function(n) { location.hash = '#/tasting/' + n.wineId; }, onDelete: function(n) { if(confirm('确认删除这条品鉴记录？')) { WineDB.deleteTastingNote(n.id); location.hash = '#/'; } }, onShare: function(n) { if(navigator.share) { navigator.share({ title: (wineData ? wineData.name : '') + ' 品鉴记录', text: '总分' + Object.values(n.ratings).reduce(function(a,b){return a+b;},0)*2 + '/100' }); } } }); td.render(); } break;
+      case 'tasting-detail': if (window.TastingDetail) { var tdc = document.getElementById('page-tasting'); var noteData = WineDB.getTastingNote(param); var wineData = noteData ? WineDB.get(noteData.wineId) : null; var td = new TastingDetail(tdc, noteData, wineData, { onEdit: function(n) { location.hash = '#/tasting/' + n.wineId; }, onDelete: function(n) { if(confirm('确认删除这条品鉴记录？')) { WineDB.deleteTastingNote(n.id); location.hash = '#/'; } }, onShare: function(n) { if(window.ShareCard) { var sc = new ShareCard(n, wineData); sc.share(); } } }); td.render(); } break;
     }
   }
   function handleRoute() {
@@ -3983,6 +3983,239 @@ class TastingList {
     });
 
     this.container.appendChild(wrapper);
+  }
+}
+
+</script>
+
+<script>
+// === Share Card Module ===
+class ShareCard {
+  constructor(note, wine) {
+    this.note = note || {};
+    this.wine = wine || {};
+  }
+
+  async generate() {
+    const canvas = document.createElement('canvas');
+    const dpr = window.devicePixelRatio || 2;
+    canvas.width = 375 * dpr;
+    canvas.height = 560 * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+
+    // 背景
+    const bgGrad = ctx.createLinearGradient(0, 0, 375, 560);
+    bgGrad.addColorStop(0, '#1a1a2e');
+    bgGrad.addColorStop(1, '#16213e');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, 375, 560);
+
+    // 顶部金色装饰线
+    const goldGrad = ctx.createLinearGradient(30, 0, 345, 0);
+    goldGrad.addColorStop(0, 'rgba(255,215,0,0)');
+    goldGrad.addColorStop(0.5, 'rgba(255,215,0,0.6)');
+    goldGrad.addColorStop(1, 'rgba(255,215,0,0)');
+    ctx.fillStyle = goldGrad;
+    ctx.fillRect(30, 20, 315, 1);
+
+    // 品鉴记录标题
+    ctx.font = 'bold 16px sans-serif';
+    ctx.fillStyle = '#ffd700';
+    ctx.textAlign = 'center';
+    ctx.fillText('品 鉴 记 录', 187.5, 50);
+
+    // 酒名
+    ctx.font = 'bold 22px sans-serif';
+    ctx.fillStyle = '#fff';
+    ctx.fillText(this.wine.name || '未知酒款', 187.5, 85);
+
+    // 品牌·香型
+    const subtitle = (this.wine.brand || '') + (this.wine.aroma ? ' · ' + this.wine.aroma : '');
+    if (subtitle) {
+      ctx.font = '13px sans-serif';
+      ctx.fillStyle = '#888';
+      ctx.fillText(subtitle, 187.5, 108);
+    }
+
+    // 分隔线
+    ctx.strokeStyle = 'rgba(255,215,0,0.3)';
+    ctx.beginPath();
+    ctx.moveTo(40, 125);
+    ctx.lineTo(335, 125);
+    ctx.stroke();
+
+    // 雷达图
+    this.drawMiniRadar(ctx, 187.5, 210, 65, this.note.ratings || {});
+
+    // 评分详情
+    const dims = [
+      { key: 'color', label: '色泽' },
+      { key: 'aroma', label: '香气' },
+      { key: 'taste', label: '口感' },
+      { key: 'finish', label: '尾韵' },
+      { key: 'overall', label: '综合' }
+    ];
+    const ratings = this.note.ratings || {};
+    const totalScore = dims.reduce((s, d) => s + (ratings[d.key] || 0), 0) * 2;
+
+    // 总分
+    ctx.font = 'bold 36px sans-serif';
+    ctx.fillStyle = '#ffd700';
+    ctx.textAlign = 'center';
+    ctx.fillText(totalScore, 187.5, 330);
+    ctx.font = '14px sans-serif';
+    ctx.fillStyle = '#888';
+    ctx.fillText('/ 100', 187.5, 350);
+
+    // 维度分数列表
+    ctx.textAlign = 'left';
+    dims.forEach((d, i) => {
+      const y = 375 + i * 22;
+      const score = ratings[d.key] || 0;
+      ctx.font = '13px sans-serif';
+      ctx.fillStyle = '#aaa';
+      ctx.fillText(d.label, 80, y);
+      
+      // 分数条
+      const barW = 120;
+      const barH = 6;
+      const barX = 140;
+      ctx.fillStyle = '#2a2a3e';
+      ctx.fillRect(barX, y - 5, barW, barH);
+      const fillW = (score / 10) * barW;
+      const barGrad = ctx.createLinearGradient(barX, 0, barX + fillW, 0);
+      barGrad.addColorStop(0, '#c9a96e');
+      barGrad.addColorStop(1, '#ffd700');
+      ctx.fillStyle = barGrad;
+      ctx.fillRect(barX, y - 5, fillW, barH);
+      
+      ctx.font = 'bold 12px sans-serif';
+      ctx.fillStyle = '#ffd700';
+      ctx.fillText(score + '', 268, y);
+    });
+
+    // 配餐
+    if (this.note.pairing) {
+      ctx.font = '12px sans-serif';
+      ctx.fillStyle = '#666';
+      ctx.textAlign = 'center';
+      ctx.fillText('配餐: ' + this.note.pairing, 187.5, 505);
+    }
+
+    // 底部水印
+    ctx.font = '11px sans-serif';
+    ctx.fillStyle = '#555';
+    ctx.textAlign = 'center';
+    ctx.fillText('我的酒柜 · ' + (this.note.date || ''), 187.5, 535);
+
+    // 底部金色装饰线
+    ctx.fillStyle = goldGrad;
+    ctx.fillRect(30, 540, 315, 1);
+
+    return canvas;
+  }
+
+  drawMiniRadar(ctx, cx, cy, maxR, ratings) {
+    const dims = ['color', 'aroma', 'taste', 'finish', 'overall'];
+    const labels = ['色泽', '香气', '口感', '尾韵', '综合'];
+    const n = dims.length;
+    const angleStep = (Math.PI * 2) / n;
+    const startAngle = -Math.PI / 2;
+
+    // 网格
+    for (let level = 2; level <= 10; level += 2) {
+      ctx.beginPath();
+      const r = (level / 10) * maxR;
+      for (let i = 0; i <= n; i++) {
+        const angle = startAngle + (i % n) * angleStep;
+        const x = cx + r * Math.cos(angle);
+        const y = cy + r * Math.sin(angle);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.strokeStyle = 'rgba(255,215,0,0.12)';
+      ctx.lineWidth = 0.5;
+      ctx.stroke();
+    }
+
+    // 轴线
+    for (let i = 0; i < n; i++) {
+      const angle = startAngle + i * angleStep;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + maxR * Math.cos(angle), cy + maxR * Math.sin(angle));
+      ctx.strokeStyle = 'rgba(255,215,0,0.15)';
+      ctx.stroke();
+    }
+
+    // 数据区域
+    ctx.beginPath();
+    for (let i = 0; i <= n; i++) {
+      const idx = i % n;
+      const val = ratings[dims[idx]] || 0;
+      const r = (val / 10) * maxR;
+      const angle = startAngle + idx * angleStep;
+      const x = cx + r * Math.cos(angle);
+      const y = cy + r * Math.sin(angle);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(255,215,0,0.2)';
+    ctx.fill();
+    ctx.strokeStyle = '#ffd700';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // 数据点
+    for (let i = 0; i < n; i++) {
+      const val = ratings[dims[i]] || 0;
+      const r = (val / 10) * maxR;
+      const angle = startAngle + i * angleStep;
+      ctx.beginPath();
+      ctx.arc(cx + r * Math.cos(angle), cy + r * Math.sin(angle), 3, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffd700';
+      ctx.fill();
+    }
+
+    // 标签
+    ctx.font = '10px sans-serif';
+    ctx.fillStyle = '#888';
+    ctx.textAlign = 'center';
+    for (let i = 0; i < n; i++) {
+      const angle = startAngle + i * angleStep;
+      const lx = cx + (maxR + 14) * Math.cos(angle);
+      const ly = cy + (maxR + 14) * Math.sin(angle);
+      ctx.fillText(labels[i], lx, ly + 3);
+    }
+  }
+
+  async share() {
+    const canvas = await this.generate();
+    if (navigator.share && canvas.toBlob) {
+      return new Promise((resolve) => {
+        canvas.toBlob(async (blob) => {
+          const file = new File([blob], 'tasting-note.png', { type: 'image/png' });
+          try {
+            await navigator.share({
+              title: (this.wine.name || '') + ' 品鉴记录',
+              files: [file]
+            });
+            resolve(true);
+          } catch (e) {
+            resolve(false);
+          }
+        }, 'image/png');
+      });
+    }
+    // 降级：下载图片
+    const link = document.createElement('a');
+    link.download = (this.wine.name || 'tasting') + '-品鉴记录.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+    return true;
   }
 }
 
