@@ -1426,6 +1426,11 @@ window.CellarPage = (function() {
     if (wine.type) { footer.appendChild(el('span', 'wine-card-type', wine.type)); }
     if (wine.aroma && wine.type === '白酒') { footer.appendChild(el('span', 'wine-card-type', wine.aroma)); }
     if (wine.price) { footer.appendChild(el('span', 'wine-card-price', '¥' + wine.price)); }
+      var tastingBtn = el('span', 'wine-card-tasting', '🍷');
+      tastingBtn.style.cssText = 'cursor:pointer;font-size:16px;margin-left:auto;padding:2px 6px;border-radius:4px;';
+      tastingBtn.title = '添加品鉴记录';
+      tastingBtn.addEventListener('click', function(e) { e.stopPropagation(); location.hash = '#/tasting/' + wine.id; });
+      footer.appendChild(tastingBtn);
     card.appendChild(footer);
     card.addEventListener('click', function() { if (wine.id) location.hash = '#/wine/' + wine.id; });
     return card;
